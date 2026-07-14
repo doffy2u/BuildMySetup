@@ -1,42 +1,42 @@
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+k  directUrl = env("DIRECT_URL")
 }
 
 generator client {
-  provider = "prisma-client-generator"
+k  provider = "prisma-client-generator"
 }
 
 // Better Auth Schema Foundation 
-model User {
+kmodel User {
   id            String    @id @default(uuid())
   name          String
   email         String    @unique
   emailVerified Boolean   @default(false)
-  image         String?
+k  image         String?
   role          String    @default("user") // "user" | "admin"
-  createdAt     DateTime  @default(now())
+k  createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   sessions      Session[]
   accounts      Account[]
-
+k
   @@map("users")
 }
 
-model Session {
+kmodel Session {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
+k  expiresAt DateTime
+k  ipAddress String?
+k  userAgent String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@map("sessions")
-}
+k}
 
 model Account {
   id                    String    @id @default(uuid())
@@ -47,11 +47,11 @@ model Account {
   accessToken           String?
   refreshToken          String?
   accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
+k  refreshTokenExpiresAt DateTime?
   scope                 String?
   idToken               String?
   password              String?
-  createdAt             DateTime  @default(now())
+kkk  createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
   @@map("accounts")
@@ -61,9 +61,638 @@ model Verification {
   id         String    @id @default(uuid())
   identifier String
   value      String
-  expiresAt  DateTime
+k  expiresAt  DateTime
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
   @@map("verifications")
+}
+
+// ==========================================
+// THE BUILD & HARDWARE SYSTEM
+// ==========================================
+
+enum BuildStatus {
+  DRAFT
+  SAVED
+  PUBLISHED
+}
+
+model Build {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String?      @db.Uuid
+  user        User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
+  title       String
+  description String?      @db.Text
+  budget      Decimal?     @db.Decimal(10, 2)
+  country     String       @default("US")
+  useCase     String?
+  status      BuildStatus  @default(DRAFT)
+  isAiCreated Boolean      @default(false)
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  deletedAt   DateTime?
+
+  items       BuildItem[]
+  savedBy     SavedBuild[]
+  publicView  PublicBuild?
+  shares      SharedBuildLink[]
+  scores      BuildScore[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("builds")
+}
+model BuildItem {
+  id          String    @id @default(uuid()) @db.Uuid
+  buildId     String    @db.Uuid
+  build       Build     @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  componentId String    @db.Uuid
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Restrict)
+  quantity    Int       @default(1)
+  note        String?   @db.Text
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([buildId, componentId])
+  @@index([componentId])
+  @@map("build_items")
+}
+
+model SavedBuild {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  buildId   String   @db.Uuid
+  build     Build    @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+
+  @@unique([userId, buildId])
+  @@index([buildId])
+  @@map("saved_builds")
+}
+
+model PublicBuild {
+  id          String   @id @default(uuid()) @db.Uuid
+  buildId     String   @unique @db.Uuid
+  build       Build    @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  slug        String   @unique
+  viewsCount  Int      @default(0)
+  likesCount  Int      @default(0)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([slug])
+  @@map("public_builds")
+}
+
+model SharedBuildLink {
+  id        String   @id @default(uuid()) @db.Uuid
+  buildId   String   @db.Uuid
+  build     Build    @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  slug      String   @unique
+  views     Int      @default(0)
+  expiresAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([slug])
+  @@map("shared_build_links")
+}
+
+// ==========================================
+// COMPONENT METADATA ENGINE
+// ==========================================
+
+model ComponentCategory {
+id          String      @id @default(uuid()) @db.Uuid
+  name        String      @unique
+  slug        String      @unique
+  description String?     @db.Text
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  components  Component[]
+
+  @@index([slug])
+  @@map("component_categories")
+}
+
+model Manufacturer {
+  id          String      @id @default(uuid()) @db.Uuid
+  name        String      @unique
+  slug        String      @unique
+  website     String?
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+
+  components  Component[]
+
+  @@index([slug])
+  @@map("manufacturers")
+}
+
+model Component {
+  id             String            @id @default(uuid()) @db.Uuid
+  categoryId     String            @db.Uuid
+  category       ComponentCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  manufacturerId String            @db.Uuid
+  manufacturer   Manufacturer      @relation(fields: [manufacturerId], references: [id], onDelete: Restrict)
+  
+  name           String
+  modelNumber    String?
+  specs          Json              @default("{}") // High flex dynamic catalog metadata
+  basePrice      Decimal           @db.Decimal(10, 2)
+  isAvailable    Boolean           @default(true)
+  
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  deletedAt      DateTime?
+
+  buildItems     BuildItem[]
+  benchmarks     PerformanceBenchmark[]
+  powerRules     PowerConsumption[]
+  priceHistory   PriceHistory[]
+  affiliateLinks AffiliateLink[]
+
+  @@index([categoryId])
+  @@index([manufacturerId])
+  @@index([name])
+  @@index([deletedAt])
+  @@map("components")
+}
+
+model CompatibilityRule {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  ruleType    String   // "SOCKET", "DIMENSIONS", "POWER_BUDGET"
+  details     Json     // Rules criteria map
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("compatibility_rules")
+}
+
+model BuildScore {
+  id          String   @id @default(uuid()) @db.Uuid
+  buildId     String   @db.Uuid
+  build       Build    @relation(fields: [buildId], references: [id], onDelete: Cascade)
+  category    String   // "GAMING", "WORKSTATION", "RENDERING"
+  score       Int      // 1-100 rating metric
+  details     Json     @default("{}")
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([buildId])
+  @@map("build_scores")
+}
+
+model PerformanceBenchmark {
+  id          String    @id @default(uuid()) @db.Uuid
+  componentId String    @db.Uuid
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  testSuite   String    // "CINEBENCH", "3DMARK", "GEEKBENCH"
+  score       Decimal   @db.Decimal(10, 2)
+  details     Json      @default("{}")
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([componentId])
+  @@map("performance_benchmarks")
+}
+
+model PowerConsumption {
+  id          String    @id @default(uuid()) @db.Uuid
+  componentId String    @db.Uuid
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  idleWatts   Int       @default(0)
+  loadWatts   Int       @default(0)
+  peakWatts   Int       @default(0)
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([componentId])
+  @@map("power_consumptions")
+}
+model PriceHistory {
+  id          String    @id @default(uuid()) @db.Uuid
+  componentId String    @db.Uuid
+  component   Component @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  retailer    String
+  price       Decimal   @db.Decimal(10, 2)
+  recordedAt  DateTime  @default(now())
+
+  @@index([componentId, recordedAt(sort: Desc)])
+  @@map("price_histories")
+}
+
+// ==========================================
+// AFFILIATE ENGINE & ANALYTICS
+// ==========================================
+
+model AffiliateNetwork {
+  id             String          @id @default(uuid()) @db.Uuid
+  name           String          @unique
+  baseUrl        String
+  trackingParams Json            @default("{}")
+  
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  links          AffiliateLink[]
+
+  @@map("affiliate_networks")
+}
+
+model AffiliateLink {
+  id          String           @id @default(uuid()) @db.Uuid
+  componentId String           @db.Uuid
+  component   Component        @relation(fields: [componentId], references: [id], onDelete: Cascade)
+  networkId   String           @db.Uuid
+  network     AffiliateNetwork @relation(fields: [networkId], references: [id], onDelete: Cascade)
+  retailUrl   String           @db.Text
+  customSlug  String?          @unique // Admin override identifier
+  
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  clicks      ClickAnalytic[]
+
+  @@index([componentId])
+  @@index([networkId])
+  @@map("affiliate_links")
+}
+
+model ClickAnalytic {
+  id              String         @id @default(uuid()) @db.Uuid
+  affiliateLinkId String         @db.Uuid
+  affiliateLink   AffiliateLink  @relation(fields: [affiliateLinkId], references: [id], onDelete: Cascade)
+  ipHash          String?
+  country         String?
+  userAgent       String?
+  clickedAt       DateTime       @default(now())
+
+  @@index([affiliateLinkId, clickedAt(sort: Desc)])
+  @@map("click_analytics")
+}
+// ==========================================
+// BILLING, PLANS & INVOICES
+// ==========================================
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  UNPAID
+}
+
+model Plan {
+  id            String         @id @default(uuid()) @db.Uuid
+  name          String         @unique
+  code          String         @unique // "pro", "creator", "enterprise"
+  description   String?        @db.Text
+  price         Decimal        @db.Decimal(10, 2)
+  billingPeriod String         @default("MONTHLY") // "MONTHLY", "ANNUAL"
+  features      Json           @default("{}") // Toggles feature set allocations
+  isActive      Boolean        @default(true)
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id         String             @id @default(uuid()) @db.Uuid
+  userId     String             @db.Uuid
+  user       User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planId     String             @db.Uuid
+  plan       Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  status     SubscriptionStatus @default(ACTIVE)
+  
+  gatewayId  String             @unique // Stripe Subscription / Razorpay ID reference
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean    @default(false)
+
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  payments   Payment[]
+
+  @@index([userId])
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+model Payment {
+  id             String        @id @default(uuid()) @db.Uuid
+  userId         String        @db.Uuid
+  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  subscriptionId String?       @db.Uuid
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  
+  gateway        String        // "STRIPE", "RAZORPAY"
+  gatewayId      String        @unique // Charge / Payment Intent ID
+  amount         Decimal       @db.Decimal(10, 2)
+  currency       String        @default("USD")
+  status         String        // "SUCCESS", "FAILED", "PENDING"
+  
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  invoice        Invoice?
+
+  @@index([userId])
+  @@index([subscriptionId])
+  @@map("payments")
+}
+
+model Invoice {
+  id         String   @id @default(uuid()) @db.Uuid
+  paymentId  String   @unique @db.Uuid
+  payment    Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  pdfUrl     String?  @db.Text
+  number     String   @unique // INV-YYYY-XXXXX sequence
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("invoices")
+}
+
+model Coupon {
+  id             String    @id @default(uuid()) @db.Uuid
+  code           String    @unique
+  percentOff     Decimal?  @db.Decimal(5, 2)
+  amountOff      Decimal?  @db.Decimal(10, 2)
+  expiresAt      DateTime?
+  maxRedemptions Int?
+  redeemedCount  Int       @default(0)
+  isActive       Boolean   @default(true)
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("coupons")
+}
+// ==========================================
+// COMMUNICATIONS & ALERTS
+// ==========================================
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String    @db.Text
+  readAt    DateTime?
+  
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model EmailLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  recipient  String
+  subject    String
+  providerId String?  // Resend Event ID Reference
+  status     String   // "SENT", "BOUNCED", "FAILED"
+  
+  createdAt  DateTime @default(now())
+
+  @@index([recipient])
+  @@map("email_logs")
+}
+
+// ==========================================
+// MARKETING & USER ENGAGEMENT
+// ==========================================
+
+model BlogCategory {
+  id        String     @id @default(uuid()) @db.Uuid
+  name      String     @unique
+  slug      String     @unique
+  
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  posts     BlogPost[]
+
+  @@map("blog_categories")
+}
+
+model BlogTag {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @unique
+  slug      String    @unique
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  posts     BlogPost[] @relation("BlogPostToBlogTag")
+
+  @@map("blog_tags")
+}
+
+model BlogPost {
+  id          String       @id @default(uuid()) @db.Uuid
+  categoryId  String       @db.Uuid
+  category    BlogCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  title       String
+  slug        String       @unique
+  content     String       @db.Text
+  coverImage  String?
+  publishedAt DateTime?
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  tags        BlogTag[]    @relation("BlogPostToBlogTag")
+
+  @@index([categoryId])
+  @@index([slug])
+  @@map("blog_posts")
+}
+
+model Feedback {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  rating    Int      // 1-5 rating metric
+  comment   String?  @db.Text
+  
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("feedback")
+}
+
+model BugReport {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String?  @db.Uuid
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  title       String
+  description String   @db.Text
+  severity    String   // "LOW", "MEDIUM", "HIGH", "CRITICAL"
+  status      String   @default("OPEN") // "OPEN", "RESOLVED", "INVESTIGATING"
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@map("bug_reports")
+}
+
+model FeatureRequest {
+  id          String        @id @default(uuid()) @db.Uuid
+  title       String
+  description String        @db.Text
+  votesCount  Int           @default(0)
+  status      String        @default("UNDER_REVIEW") // "UNDER_REVIEW", "PLANNED", "COMPLETED"
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  votes       FeatureVote[]
+
+  @@map("feature_requests")
+}
+
+model FeatureVote {
+  id               String         @id @default(uuid()) @db.Uuid
+  userId           String         @db.Uuid
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  featureRequestId String         @db.Uuid
+  featureRequest   FeatureRequest @relation(fields: [featureRequestId], references: [id], onDelete: Cascade)
+  
+  createdAt        DateTime       @default(now())
+
+  @@unique([userId, featureRequestId])
+  @@index([featureRequestId])
+  @@map("feature_votes")
+}
+
+model ContactMessage {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  email     String
+  message   String   @db.Text
+  isRead    Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+
+  @@map("contact_messages")
+}
+// ==========================================
+// SECURITY, COMPLIANCE & API CONTROL
+// ==========================================
+
+model AdminLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  adminId   String   @db.Uuid
+  admin     User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  action    String   // "CREATE_COMP_LINK", "BAN_USER", "ALTER_PLAN"
+  targetId  String?  // Target Row UUID Reference
+  metadata  Json     @default("{}")
+  
+  createdAt DateTime @default(now())
+
+  @@index([adminId])
+  @@map("admin_logs")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String?  @db.Uuid
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String   // "PASSWORD_CHANGE", "MFA_ENABLED", "SUBSCRIPTION_CANCEL"
+  ipAddress String?
+  metadata  Json     @default("{}")
+  
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid()) @db.Uuid
+  key       String   @unique
+  value     String
+  
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+model FeatureFlag {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  isEnabled   Boolean  @default(false)
+  description String?  @db.Text
+  
+  updatedAt   DateTime @updatedAt
+
+  @@map("feature_flags")
+}
+
+model ApiKey {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  hashedKey String    @unique
+  isActive  Boolean   @default(true)
+  expiresAt DateTime?
+  
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("api_keys")
+}
+
+model UsageStatistic {
+  id          String   @id @default(uuid()) @db.Uuid
+  metricName  String   // "ACTIVE_DAILY_USERS", "API_HITS", "CLICKTHROUGHS"
+  value       Decimal  @db.Decimal(12, 2)
+  recordedFor DateTime // Temporal Day Segment (Date without time)
+
+  @@unique([metricName, recordedFor])
+  @@map("usage_statistics")
+}
+
+model AiRequest {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String?  @db.Uuid
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  promptHash   String?  // Detect repetitive requests easily
+  model        String   // "gpt-4o", "claude-3-5"
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  costMetric   Decimal  @db.Decimal(8, 6)
+  
+  createdAt    DateTime @default(now())
+
+  @@index([userId])
+  @@map("ai_requests")
 }
